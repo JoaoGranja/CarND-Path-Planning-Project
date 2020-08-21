@@ -7,6 +7,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "helpers.h"
 #include "json.hpp"
+#include "spline.h"
 
 // for convenience
 using nlohmann::json;
@@ -22,6 +23,7 @@ int main() {
   vector<double> map_waypoints_s;
   vector<double> map_waypoints_dx;
   vector<double> map_waypoints_dy;
+  
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
@@ -92,13 +94,134 @@ int main() {
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          
+          //std::cout << "car_x " << car_x  << std::endl;
+          //std::cout << "car_y " << car_y  << std::endl;
+          
+          //lane index
+  	      int lane_id = 1;
+  
+          //velocity reference
+          double ref_vel = 49.5;
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
-
-
+          vector<double> ptsx;
+          vector<double> ptsy;
+          
+          // previous path size regarding number of points 
+          int prev_size = previous_path_x.size();
+          
+          double ref_x = car_x;
+          double ref_y = car_y;
+          double ref_yaw = deg2rad(car_yaw);
+          
+          // 1 -  add all previous_path points
+          for (int i=0; i<prev_size; i++){
+            
+            next_x_vals.push_back(previous_path_x[i]);
+            next_y_vals.push_back(previous_path_y[i]);
+          }
+            
+          
+          if (prev_size < 2)
+          {
+            //std::cout << "car_x " << car_x  << std::endl;
+            //std::cout << "car_y " << car_y  << std::endl;
+            //std::cout << "car_yaw " << car_yaw  << std::endl;
+            
+            double prev_car_x = ref_x - cos(ref_yaw);
+            double prev_car_y = ref_y - sin(ref_yaw);
+            
+            ptsx.push_back(prev_car_x);
+            ptsx.push_back(ref_x);
+            
+            ptsy.push_back(prev_car_y);
+            ptsy.push_back(ref_y);
+          }
+          else
+          {
+            ref_x = previous_path_x[prev_size-1];
+            ref_y = previous_path_y[prev_size-1];
+            
+            double prev_ref_x = previous_path_x[prev_size-2];
+            double prev_ref_y = previous_path_y[prev_size-2];
+            
+            ref_yaw = atan2(ref_y-prev_ref_y,ref_x-prev_ref_x);
+            
+            ptsx.push_back(prev_ref_x);
+            ptsx.push_back(ref_x);
+            
+            ptsy.push_back(prev_ref_y);
+            ptsy.push_back(ref_y);
+          }
+          
+          vector<double> next_wp0 = getXY(car_s + 30, (2 + 4*lane_id), map_waypoints_s, map_waypoints_x, map_waypoints_y);  
+          vector<double> next_wp1 = getXY(car_s + 60, (2 + 4*lane_id), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
+          vector<double> next_wp2 = getXY(car_s + 90, (2 + 4*lane_id), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
+          
+          ptsx.push_back(next_wp0[0]);
+          ptsx.push_back(next_wp1[0]);
+          ptsx.push_back(next_wp2[0]);
+          
+          ptsy.push_back(next_wp0[1]);
+          ptsy.push_back(next_wp1[1]);
+          ptsy.push_back(next_wp2[1]);
+            
+          //shift rotation and translation
+          for (int i = 0; i < ptsx.size(); i++)
+          {
+            double shift_x = ptsx[i] - ref_x;
+            double shift_y = ptsy[i] - ref_y;
+            
+            ptsx[i] = (shift_x * cos(0-ref_yaw) - shift_y * sin(0-ref_yaw));
+            ptsy[i] = (shift_x * sin(0-ref_yaw) + shift_y * cos(0-ref_yaw));
+            
+            //std::cout << "spline points " << i  << std::endl;
+            //std::cout << "y points " << ptsy[i]  << std::endl;
+            //std::cout << "x points " << ptsx[i]  << std::endl;
+          }
+          
+          // create a spline
+          tk::spline s;
+          s.set_points(ptsx, ptsy);
+                
+          // calculate how to break up spline points so that we travel at our desired reference velocity
+          double target_x = 30.0;
+          double target_y = s(target_x);
+          double target_dist = sqrt((target_x*target_x) + (target_y*target_y));
+          
+          double x_add_on = 0;
+          
+          // 2 -  add remaining points which belongs to the spline
+          double N = (target_dist/(0.02 * ref_vel/2.24));
+          for (int i = 0; i < 50-prev_size; i++){
+            
+            x_add_on += (target_x/N);
+            
+            double x_ref = x_add_on;
+            double y_ref = s(x_add_on);
+            
+            //std::cout << "x_ref y_ref " << x_ref << "   " << y_ref << std::endl;
+            
+            //rotate back to normal coordinate system 
+            double x_point;
+            double y_point;
+            x_point = ref_x + (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
+            y_point = ref_y + (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));           
+            
+            next_x_vals.push_back(x_point);
+            next_y_vals.push_back(y_point);
+          }
+          //END
+          //std::cout << "Finish iteration " << std::endl;
+          //for (int i = 0; i < next_x_vals.size(); i++){
+          //  std::cout << "x next_x_vals " << next_x_vals[i]  << std::endl;
+          //  std::cout << "y next_y_vals " << next_y_vals[i]  << std::endl;
+          //}
+          
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
