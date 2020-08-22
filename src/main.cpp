@@ -24,6 +24,9 @@ int main() {
   vector<double> map_waypoints_dx;
   vector<double> map_waypoints_dy;
   
+  //velocity reference
+  double ref_vel = 0.0;
+  
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
@@ -53,7 +56,7 @@ int main() {
   }
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
+               &map_waypoints_dx,&map_waypoints_dy, &ref_vel]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -100,9 +103,6 @@ int main() {
           
           //lane index
   	      int lane_id = 1;
-  
-          //velocity reference
-          double ref_vel = 49.5;
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -113,6 +113,45 @@ int main() {
           
           // previous path size regarding number of points 
           int prev_size = previous_path_x.size();
+          
+          if (prev_size > 0)
+          {
+            car_s = end_path_s;
+          }
+          
+          bool so_close = false;
+          
+          //find ref_vel to use
+          for(int i = 0; i < sensor_fusion.size(); i++)
+          {
+            //car is in my line??
+            float d = sensor_fusion[i][6];
+            if( (d < (2+4*lane_id+2)) && (d > (2+4*lane_id-2)))
+            {
+              double vx = sensor_fusion[i][3];
+              double vy = sensor_fusion[i][4];
+              double check_speed = sqrt((vx*vx)+(vy*vy));
+              double check_car_s = sensor_fusion[i][5];
+              
+              check_car_s+=((double)prev_size*0.02*check_speed);
+              
+              if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
+              {
+                so_close = true;
+                std::cout << "so_close" << so_close  << std::endl;
+              }
+              
+            }
+          }
+          
+          if (so_close)
+          {
+            ref_vel -= 0.224;
+          }
+          else if( ref_vel <= 49.5)
+          {
+            ref_vel = ref_vel + 0.224;
+          }
           
           double ref_x = car_x;
           double ref_y = car_y;
