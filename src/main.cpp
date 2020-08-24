@@ -9,6 +9,7 @@
 #include "json.hpp"
 #include "spline.h"
 
+
 // for convenience
 using nlohmann::json;
 using std::string;
@@ -27,6 +28,11 @@ int main() {
   //velocity reference
   double ref_vel = 0.0;
   
+  //lane index
+  int curr_lane = 1;
+  
+  //state
+  int curr_state = KL;
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
@@ -56,7 +62,7 @@ int main() {
   }
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy, &ref_vel]
+               &map_waypoints_dx,&map_waypoints_dy, &ref_vel, &curr_lane, &curr_state]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -101,8 +107,7 @@ int main() {
           //std::cout << "car_x " << car_x  << std::endl;
           //std::cout << "car_y " << car_y  << std::endl;
           
-          //lane index
-  	      int lane_id = 1;
+          
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -110,13 +115,14 @@ int main() {
            */
           vector<double> ptsx;
           vector<double> ptsy;
+          double next_state, next_lane;
           
           // previous path size regarding number of points 
           int prev_size = previous_path_x.size();
           
           if (prev_size > 0)
           {
-            car_s = end_path_s;
+            car_s = end_path_s; //last path point
           }
           
           bool so_close = false;
@@ -126,7 +132,7 @@ int main() {
           {
             //car is in my line??
             float d = sensor_fusion[i][6];
-            if( (d < (2+4*lane_id+2)) && (d > (2+4*lane_id-2)))
+            if( (d < (2+4*curr_lane+2)) && (d > (2+4*curr_lane-2)))
             {
               double vx = sensor_fusion[i][3];
               double vy = sensor_fusion[i][4];
@@ -138,19 +144,23 @@ int main() {
               if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
               {
                 so_close = true;
-                std::cout << "so_close" << so_close  << std::endl;
               }
               
             }
           }
-          
+          std::cout << "curr_state " << curr_state  << " curr_lane " << curr_lane << std::endl;
           if (so_close)
           {
-            ref_vel -= 0.224;
+            next_state = choose_next_state(sensor_fusion, car_s, curr_state, curr_lane, prev_size, ref_vel);
+            next_lane = successor_lane(curr_lane, next_state);
+            ref_vel = successor_velocity(sensor_fusion, car_s, next_lane, prev_size, ref_vel, curr_state, next_state);
+            curr_state = next_state;
+            curr_lane = next_lane;
+            std::cout << "next_state " << next_state  << " curr_lane " << curr_lane << std::endl;
           }
           else if( ref_vel <= 49.5)
           {
-            ref_vel = ref_vel + 0.224;
+            ref_vel += 0.224;
           }
           
           double ref_x = car_x;
@@ -197,9 +207,9 @@ int main() {
             ptsy.push_back(ref_y);
           }
           
-          vector<double> next_wp0 = getXY(car_s + 30, (2 + 4*lane_id), map_waypoints_s, map_waypoints_x, map_waypoints_y);  
-          vector<double> next_wp1 = getXY(car_s + 60, (2 + 4*lane_id), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
-          vector<double> next_wp2 = getXY(car_s + 90, (2 + 4*lane_id), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
+          vector<double> next_wp0 = getXY(car_s + 30, (2 + 4*curr_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);  
+          vector<double> next_wp1 = getXY(car_s + 60, (2 + 4*curr_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
+          vector<double> next_wp2 = getXY(car_s + 90, (2 + 4*curr_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
           
           ptsx.push_back(next_wp0[0]);
           ptsx.push_back(next_wp1[0]);
@@ -255,6 +265,7 @@ int main() {
             next_y_vals.push_back(y_point);
           }
           //END
+          
           //std::cout << "Finish iteration " << std::endl;
           //for (int i = 0; i < next_x_vals.size(); i++){
           //  std::cout << "x next_x_vals " << next_x_vals[i]  << std::endl;

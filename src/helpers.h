@@ -5,9 +5,15 @@
 #include <string>
 #include <vector>
 
+#define KL   1
+#define LCL  4
+#define LCR  5
+#define MAX_SPEED 50
+
 // for convenience
 using std::string;
 using std::vector;
+
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -152,6 +158,148 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
   double y = seg_y + d*sin(perp_heading);
 
   return {x,y};
+}
+
+
+// Provides the possible next states given the current state
+vector<int> successor_states(int curr_lane, int curr_state) {
+  vector<int> next_states;
+  next_states.push_back(KL);
+  if(curr_state == KL)
+  {
+  	if (curr_lane != 0)
+    {
+    	next_states.push_back(LCL);
+    }
+	if (curr_lane < 2 )
+    {
+    	next_states.push_back(LCR);
+    }
+  }
+  return next_states;
+} 
+
+// Provides the possible next lane given the next state
+int successor_lane(int curr_lane, int next_state) {
+  
+  if(next_state == LCL)
+  {
+    return curr_lane - 1;
+  }
+  else if(next_state == LCR)
+  {
+    return curr_lane + 1;
+  }
+  
+  return curr_lane;
+} 
+ 
+
+// Provides the possible next velocity reference given the next state
+double successor_velocity(vector<vector<double>> sensor_fusion, double car_s, int intended_lane, double prev_size, double curr_vel, int curr_state, int next_state) {
+  double next_vel;
+  next_vel = curr_vel;
+
+  if (curr_state == next_state)
+  {
+    next_vel -= 0.224;
+  }
+  else 
+  {
+    for(int i = 0; i < sensor_fusion.size(); i++)
+  	{
+      //is there any car on my intended lane?
+      float d = sensor_fusion[i][6];
+      if( (d < (4+4*intended_lane)) && (d > (4*intended_lane)))
+      {
+        double vx = sensor_fusion[i][3];
+        double vy = sensor_fusion[i][4];
+        double check_speed = sqrt((vx*vx)+(vy*vy));
+        double check_car_s = sensor_fusion[i][5];
+
+        check_car_s+=((double)prev_size*0.02*check_speed);
+
+        if (((check_car_s - car_s) < 30) || (((car_s - check_car_s) < 30) && (check_speed < curr_vel) ))
+        {
+          if (check_speed > curr_vel)
+            next_vel += 0.224;
+          else
+            next_vel -= 0.224;
+          //std::cout << "i " << i << " check_speed " << check_speed << std::endl;
+        }
+      }
+    }
+  }
+  return next_vel;
+}
+
+float calc_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lane, double prev_size, double curr_vel){
+  double lane_speed, nearest_car_s;
+  double reference_speed = MAX_SPEED;
+  
+  // if no car is on the lane
+  lane_speed = MAX_SPEED;
+  nearest_car_s = 50;
+  
+  for(int i = 0; i < sensor_fusion.size(); i++)
+  {
+    //car is in my line??
+    float d = sensor_fusion[i][6];
+    if( (d < (4+4*curr_lane)) && (d > (4*curr_lane)))
+    {
+      double vx = sensor_fusion[i][3];
+      double vy = sensor_fusion[i][4];
+      double check_speed = sqrt((vx*vx)+(vy*vy));
+      double check_car_s = sensor_fusion[i][5];
+
+      check_car_s+=((double)prev_size*0.02*check_speed); 
+      // if a car is very close to our car, return the maximum cost value otherwise determine the "lane_speed"
+	  if (( (check_car_s - car_s) > - 20) && (((check_car_s - car_s) < 20) ))
+      {
+        std::cout << "check_car_s " << check_car_s << " car_s " << car_s << std::endl;
+        return 1;
+      }
+      else
+      {
+        if (( (check_car_s - car_s) > - nearest_car_s) && (((check_car_s - car_s) < nearest_car_s) ))
+        {
+          nearest_car_s = (check_car_s - car_s);
+          if(nearest_car_s < 0)
+            nearest_car_s = nearest_car_s * -1;
+          lane_speed = check_speed;
+          std::cout << "i " << i << " lane_speed " << lane_speed << std::endl;
+        }
+      }
+
+    }
+  }
+  return (reference_speed - lane_speed)/reference_speed;
+}
+
+int choose_next_state(vector<vector<double>> sensor_fusion, double car_s, int curr_state, int curr_lane, double prev_size, double curr_vel){
+  int next_state;
+  vector <int> next_states;
+  float min_cost, cost;
+  bool First_time = true;
+  
+  next_states = successor_states(curr_lane, curr_state);
+  next_state = next_states[0];
+  
+  // find the best next state using a cost function for speed
+  for(vector<int>::iterator it = next_states.begin(); it < next_states.end(); ++it)
+  {
+    double next_lane = successor_lane(curr_lane, *it);
+    cost = calc_cost(sensor_fusion, car_s, next_lane, prev_size, curr_vel);
+    std::cout << "next_state " << *it << " next lane " << next_lane <<  " cost " << cost << std::endl;
+    
+    if (min_cost > cost || First_time)
+    {
+      min_cost = cost;
+      next_state = *it;
+      First_time = false;
+    }
+  }
+  return next_state;
 }
 
 #endif  // HELPERS_H
