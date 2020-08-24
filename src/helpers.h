@@ -4,11 +4,12 @@
 #include <math.h>
 #include <string>
 #include <vector>
+#include "spline.h"
 
 #define KL   1
-#define LCL  4
-#define LCR  5
-#define MAX_SPEED 50
+#define LCL  2
+#define LCR  3
+#define MAX_SPEED 49.5
 
 // for convenience
 using std::string;
@@ -198,42 +199,37 @@ int successor_lane(int curr_lane, int next_state) {
 // Provides the possible next velocity reference given the next state
 double successor_velocity(vector<vector<double>> sensor_fusion, double car_s, int intended_lane, double prev_size, double curr_vel, int curr_state, int next_state) {
   double next_vel;
-  next_vel = curr_vel;
+  next_vel = MAX_SPEED;
+ 
+  for(int i = 0; i < sensor_fusion.size(); i++)
+  {
+    //is there any car on my intended lane?
+    float d = sensor_fusion[i][6];
+    if( (d < (4+4*intended_lane)) && (d > (4*intended_lane)))
+    {
+      double vx = sensor_fusion[i][3];
+      double vy = sensor_fusion[i][4];
+      double check_speed = sqrt((vx*vx)+(vy*vy));
+      double check_car_s = sensor_fusion[i][5];
 
-  if (curr_state == next_state)
-  {
-    next_vel -= 0.224;
-  }
-  else 
-  {
-    for(int i = 0; i < sensor_fusion.size(); i++)
-  	{
-      //is there any car on my intended lane?
-      float d = sensor_fusion[i][6];
-      if( (d < (4+4*intended_lane)) && (d > (4*intended_lane)))
+      check_car_s+=((double)prev_size*0.02*check_speed);
+
+      if (((check_car_s - car_s) < 30) || (((car_s - check_car_s) < 30) && (check_speed < curr_vel) ))
       {
-        double vx = sensor_fusion[i][3];
-        double vy = sensor_fusion[i][4];
-        double check_speed = sqrt((vx*vx)+(vy*vy));
-        double check_car_s = sensor_fusion[i][5];
-
-        check_car_s+=((double)prev_size*0.02*check_speed);
-
-        if (((check_car_s - car_s) < 30) || (((car_s - check_car_s) < 30) && (check_speed < curr_vel) ))
+        if (check_speed < next_vel)
         {
-          if (check_speed > curr_vel)
-            next_vel += 0.224;
-          else
-            next_vel -= 0.224;
-          //std::cout << "i " << i << " check_speed " << check_speed << std::endl;
+          next_vel = check_speed;
+          std::cout << "i " << i << " check_speed " << check_speed << " curr_vel " << curr_vel << std::endl;
         }
       }
     }
   }
+
   return next_vel;
 }
 
-float calc_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lane, double prev_size, double curr_vel){
+// calcualte the velocity cost for each possible next state
+float vel_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lane, double prev_size, double curr_vel){
   double lane_speed, nearest_car_s;
   double reference_speed = MAX_SPEED;
   
@@ -256,7 +252,6 @@ float calc_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lan
       // if a car is very close to our car, return the maximum cost value otherwise determine the "lane_speed"
 	  if (( (check_car_s - car_s) > - 20) && (((check_car_s - car_s) < 20) ))
       {
-        std::cout << "check_car_s " << check_car_s << " car_s " << car_s << std::endl;
         return 1;
       }
       else
@@ -273,9 +268,11 @@ float calc_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lan
 
     }
   }
+  
   return (reference_speed - lane_speed)/reference_speed;
 }
 
+// find the best state to follow
 int choose_next_state(vector<vector<double>> sensor_fusion, double car_s, int curr_state, int curr_lane, double prev_size, double curr_vel){
   int next_state;
   vector <int> next_states;
@@ -289,7 +286,16 @@ int choose_next_state(vector<vector<double>> sensor_fusion, double car_s, int cu
   for(vector<int>::iterator it = next_states.begin(); it < next_states.end(); ++it)
   {
     double next_lane = successor_lane(curr_lane, *it);
-    cost = calc_cost(sensor_fusion, car_s, next_lane, prev_size, curr_vel);
+    cost = vel_cost(sensor_fusion, car_s, next_lane, prev_size, curr_vel);
+    
+    //penalize cost for lane different than center one. Because from lane 1 we have more chance to change for a faster lane
+    if (next_lane != 1)
+    	cost += 0.03;
+    
+    //penalize cost for chaging lane instead of keep lane. This is to avoid changing lane for a small velocity diference
+    if (*it != KL)
+    	cost += 0.02;
+    
     std::cout << "next_state " << *it << " next lane " << next_lane <<  " cost " << cost << std::endl;
     
     if (min_cost > cost || First_time)
@@ -300,6 +306,127 @@ int choose_next_state(vector<vector<double>> sensor_fusion, double car_s, int cu
     }
   }
   return next_state;
+}
+
+vector<vector<double>> trajectory_generation(double car_x, double car_y, double car_yaw, double car_s, 
+                                            vector<double> map_waypoints_s, vector<double> map_waypoints_x, vector<double> map_waypoints_y, vector<double> previous_path_x, vector<double> previous_path_y, double ref_vel, double curr_lane, double &curr_vel){
+  
+  int prev_size = previous_path_x.size();
+  double ref_x = car_x;
+  double ref_y = car_y;
+  double ref_yaw = deg2rad(car_yaw);
+  vector<vector<double>> next_vals(2);
+  vector<double> ptsx;
+  vector<double> ptsy;
+  
+  
+
+  // 1 -  add all previous_path points
+  for (int i=0; i<prev_size; i++){
+
+    next_vals[0].push_back(previous_path_x[i]);
+    next_vals[1].push_back(previous_path_y[i]);
+  }
+
+
+  if (prev_size < 2)
+  {
+
+    double prev_car_x = ref_x - cos(ref_yaw);
+    double prev_car_y = ref_y - sin(ref_yaw);
+
+    ptsx.push_back(prev_car_x);
+    ptsx.push_back(ref_x);
+
+    ptsy.push_back(prev_car_y);
+    ptsy.push_back(ref_y);
+  }
+  else
+  {
+    ref_x = previous_path_x[prev_size-1];
+    ref_y = previous_path_y[prev_size-1];
+
+    double prev_ref_x = previous_path_x[prev_size-2];
+    double prev_ref_y = previous_path_y[prev_size-2];
+
+    ref_yaw = atan2(ref_y-prev_ref_y,ref_x-prev_ref_x);
+
+    ptsx.push_back(prev_ref_x);
+    ptsx.push_back(ref_x);
+
+    ptsy.push_back(prev_ref_y);
+    ptsy.push_back(ref_y);
+  }
+
+  vector<double> next_wp0 = getXY(car_s + 30, (2 + 4*curr_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);  
+  vector<double> next_wp1 = getXY(car_s + 60, (2 + 4*curr_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
+  vector<double> next_wp2 = getXY(car_s + 90, (2 + 4*curr_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y); 
+
+  ptsx.push_back(next_wp0[0]);
+  ptsx.push_back(next_wp1[0]);
+  ptsx.push_back(next_wp2[0]);
+
+  ptsy.push_back(next_wp0[1]);
+  ptsy.push_back(next_wp1[1]);
+  ptsy.push_back(next_wp2[1]);
+
+  //shift rotation and translation
+  for (int i = 0; i < ptsx.size(); i++)
+  {
+    double shift_x = ptsx[i] - ref_x;
+    double shift_y = ptsy[i] - ref_y;
+
+    ptsx[i] = (shift_x * cos(0-ref_yaw) - shift_y * sin(0-ref_yaw));
+    ptsy[i] = (shift_x * sin(0-ref_yaw) + shift_y * cos(0-ref_yaw));
+
+  }
+
+  // create a spline
+  tk::spline s;
+  s.set_points(ptsx, ptsy);
+
+  // calculate how to break up spline points so that we travel at our desired reference velocity
+  double target_x = 30.0;
+  double target_y = s(target_x);
+  double target_dist = sqrt((target_x*target_x) + (target_y*target_y));
+
+  double x_add_on = 0;
+  double vel = curr_vel;
+  
+  // 2 -  add remaining points which belongs to the spline
+  for (int i = 0; i < 50-prev_size; i++){
+    //calculate next point following the formula delta_x = v*t+0.5*a*t*t
+    if (vel < ref_vel)
+    {
+      vel += 0.224;
+      x_add_on += (vel*0.02/2.24) + (0.5*0.224*0.02*0.02);
+    }
+    else if (vel > ref_vel)
+    {
+      vel -= 0.224;
+      x_add_on += (vel*0.02/2.24) - (0.5*0.224*0.02*0.02);
+    }
+    else
+    {
+      x_add_on += (vel*0.02/2.24);
+    }
+    double x_ref = x_add_on;
+    double y_ref = s(x_add_on);
+
+
+    //rotate back to normal coordinate system 
+    double x_point;
+    double y_point;
+    x_point = ref_x + (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
+    y_point = ref_y + (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));           
+
+    next_vals[0].push_back(x_point);
+    next_vals[1].push_back(y_point);
+  }
+  
+  //update current velocity
+  curr_vel = vel;
+  return next_vals;
 }
 
 #endif  // HELPERS_H
