@@ -1,10 +1,10 @@
-# **PID Controller** 
+# **Path Planning** 
 
 ---
 
-**PID Controller Project**
+**Path Planning Project**
 
-In this project, I will implement a PID controller in C++ to maneuver a vehicle around the track.
+In this project, I will design a path planner in C++ that is able to create smooth, safe paths for the car to follow along a 3 lane highway with traffic. A successful path planner will be able to keep inside its lane, avoid hitting other cars, and pass slower moving traffic all by using localization, sensor fusion, and map data.
 
 The goals / steps of this project are the following:
 * Build a PID controller for the steering angle of the car so that the vehicle successfully drives a lap around the track.

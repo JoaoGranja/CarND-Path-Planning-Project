@@ -24,13 +24,13 @@ int main() {
   vector<double> map_waypoints_dx;
   vector<double> map_waypoints_dy;
   
-  //velocity reference
+  //current velocity
   double curr_vel = 0.0;
   
-  //lane index
+  //current lane index
   int curr_lane = 1;
   
-  //state
+  //current state
   int curr_state = KL;
 
   // Waypoint map to read from
@@ -115,46 +115,21 @@ int main() {
             car_s = end_path_s; //last path point
           }
           
-          bool test_change_lane = false;
-          
-          //find ref_vel to use
-          for(int i = 0; i < sensor_fusion.size(); i++)
-          {
-            //car is in my line??
-            float d = sensor_fusion[i][6];
-            if( (d < (2+4*curr_lane+2)) && (d > (2+4*curr_lane-2)))
-            {
-              double vx = sensor_fusion[i][3];
-              double vy = sensor_fusion[i][4];
-              double check_speed = sqrt((vx*vx)+(vy*vy));
-              double check_car_s = sensor_fusion[i][5];
-              
-              check_car_s+=((double)prev_size*0.02*check_speed);
-              
-              if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
-              {
-                test_change_lane = true;
-              }
-              
-            }
-          }
-          //std::cout << "curr_state " << curr_state  << " curr_lane " << curr_lane << std::endl;
+          bool test_change_lane = false;   
+          std::cout << "car_d " << car_d  << " curr_lane " << curr_lane << std::endl;
           
           
-          if (test_change_lane)
-          {
-            next_state = choose_next_state(sensor_fusion, car_s, curr_state, curr_lane, prev_size, ref_vel);
-            next_lane = successor_lane(curr_lane, next_state);
-            ref_vel = successor_velocity(sensor_fusion, car_s, next_lane, prev_size, ref_vel, curr_state, next_state);
-            curr_state = next_state;
-            curr_lane = next_lane;
-            std::cout << "next_state " << next_state  << " curr_lane " << curr_lane << std::endl;
-          }
-          else if( ref_vel <= MAX_SPEED)
-          {
-            curr_state = KL;
-            ref_vel = MAX_SPEED;
-          }
+          
+          curr_state = KL;
+          
+          next_state = choose_next_state(sensor_fusion, car_s, car_d, curr_state, curr_lane, prev_size, ref_vel);
+          next_lane = successor_lane(curr_lane, next_state);
+          ref_vel = successor_velocity(sensor_fusion, car_s, next_lane, prev_size);
+          
+          curr_state = next_state;
+          curr_lane = next_lane;
+          std::cout << "next_state " << next_state  << " next_lane " << next_lane << " ref_vel " << ref_vel << std::endl;
+
           
           vector<vector<double>> next_vals = trajectory_generation(car_x, car_y, car_yaw, car_s,
                                             map_waypoints_s, map_waypoints_x, map_waypoints_y, previous_path_x, previous_path_y,
