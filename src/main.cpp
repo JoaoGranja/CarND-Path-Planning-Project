@@ -113,28 +113,27 @@ int main() {
           if (prev_size > 0)
           {
             car_s = end_path_s; //last path point
-          }
+          }        
           
-          bool test_change_lane = false;   
-          std::cout << "car_d " << car_d  << " curr_lane " << curr_lane << std::endl;
-          
-          
-          
+          //After chaging lane, the state shall automatically change to Keep Lane
           curr_state = KL;
           
+          //determine the best next state to follow.
           next_state = choose_next_state(sensor_fusion, car_s, car_d, curr_state, curr_lane, prev_size, ref_vel);
+          
+          //Find the next lane and ref_vel to follow.
           next_lane = successor_lane(curr_lane, next_state);
           ref_vel = successor_velocity(sensor_fusion, car_s, next_lane, prev_size);
           
-          curr_state = next_state;
-          curr_lane = next_lane;
           std::cout << "next_state " << next_state  << " next_lane " << next_lane << " ref_vel " << ref_vel << std::endl;
 
-          
+          //based on curr_lane and ref_vel, generate the trajectory points
           vector<vector<double>> next_vals = trajectory_generation(car_x, car_y, car_yaw, car_s,
                                             map_waypoints_s, map_waypoints_x, map_waypoints_y, previous_path_x, previous_path_y,
-                                            ref_vel, curr_lane, curr_vel);
+                                            ref_vel, next_lane, curr_vel);
           
+          curr_state = next_state;
+          curr_lane = next_lane;
           //END
           
           msgJson["next_x"] = next_vals[0];

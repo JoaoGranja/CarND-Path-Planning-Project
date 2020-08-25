@@ -214,7 +214,7 @@ double successor_velocity(vector<vector<double>> sensor_fusion, double car_s, in
 
       check_car_s+=((double)prev_size*0.02*check_speed);
 
-      if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))//|| (((car_s - check_car_s) < 15) && (check_speed < curr_vel) ))
+      if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
       {
         if (check_speed < next_vel)
         {
@@ -250,7 +250,7 @@ float vel_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lane
       double check_car_s = sensor_fusion[i][5];
 
       check_car_s+=((double)prev_size*0.02*check_speed); 
-      std::cout << " next_state " << next_state << " check_car_s " << check_car_s << " car_s " << car_s << std::endl;
+      //std::cout << " next_state " << next_state << " check_car_s " << check_car_s << " car_s " << car_s << std::endl;
 
       
       // if a car is very close to our car, return a high cost value otherwise determine the "lane_speed"
@@ -265,7 +265,7 @@ float vel_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lane
           {
             nearest_car_s = (check_car_s - car_s);
             lane_speed = check_speed;
-            std::cout << "nearest_car_s " << nearest_car_s << " curr_lane " << curr_lane << " lane_speed " << lane_speed << std::endl;
+            //std::cout << "nearest_car_s " << nearest_car_s << " curr_lane " << curr_lane << " lane_speed " << lane_speed << std::endl;
           }
         }
       }
@@ -287,7 +287,7 @@ float vel_cost(vector<vector<double>> sensor_fusion, double car_s, int curr_lane
             if(nearest_car_s < 0)
               nearest_car_s = nearest_car_s * -1;
             lane_speed = check_speed;
-            std::cout << "nearest_car_s " << nearest_car_s << " curr_lane" << curr_lane << " lane_speed " << lane_speed << std::endl;
+            //std::cout << "nearest_car_s " << nearest_car_s << " curr_lane" << curr_lane << " lane_speed " << lane_speed << std::endl;
           }
         }
       }
@@ -327,7 +327,7 @@ int choose_next_state(vector<vector<double>> sensor_fusion, double car_s, double
     if (*it != KL )
     	cost += 0.05;
     
-    std::cout << "state " << *it << " lane " << next_lane <<  " cost " << cost << std::endl;
+    //std::cout << "state " << *it << " lane " << next_lane <<  " cost " << cost << std::endl;
     
     if (min_cost > cost || First_time)
     {
